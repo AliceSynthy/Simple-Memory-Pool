@@ -1,9 +1,14 @@
 #ifndef MEMORY_POOL_H
 #define MEMORY_POOL_H
 
+#include <cstddef>
+#include <mutex>
+
 #define BLOCK_SIZE      (4 * 1024 * 1024)  /* 每个内存块大小4MB */
 #define ELEMENT_SIZE    32                  /* 每个元素大小32字节 */
 #define INITIAL_BLOCKS  4                   /* 初始块上限为4块 */
+
+typedef unsigned long size_t;
 
 /* 空闲链表节点：嵌入在空闲元素内部 */
 typedef struct FreeNode {
