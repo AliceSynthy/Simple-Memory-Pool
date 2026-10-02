@@ -1,16 +1,6 @@
 #ifndef MEMORY_POOL_H
 #define MEMORY_POOL_H
 
-#if defined(__has_include)
-#  if __has_include(<stddef.h>)
-#    include <stddef.h>
-#  else
-typedef __SIZE_TYPE__ size_t;
-#  endif
-#else
-#  include <stddef.h>
-#endif
-
 #define BLOCK_SIZE      (4 * 1024 * 1024)  /* 每个内存块大小4MB */
 #define ELEMENT_SIZE    32                  /* 每个元素大小32字节 */
 #define INITIAL_BLOCKS  4                   /* 初始块上限为4块 */
@@ -35,10 +25,11 @@ typedef struct {
     FreeNode *free_list; /* 空闲链表头 */
     size_t elem_size;    /* 元素大小 */
     size_t block_size;   /* 块大小 */
+    std::mutex mtx;      /* 互斥锁，保护上述所有字段的并发访问 */
 } MemPool;
 
 /* 四大核心模块 */
-MemPool *pool_init(void);
+MemPool *pool_init(size_t elem_size = ELEMENT_SIZE, size_t block_size = BLOCK_SIZE);
 void    *pool_malloc(MemPool *pool);
 void     pool_free(MemPool *pool, void *elem);
 void     pool_destroy(MemPool *pool);
