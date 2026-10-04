@@ -1,100 +1,90 @@
 #include "memory_pool.h"
 #include <iostream>
 #include <time.h>
+#include <vector>
 using namespace std;
 
-void test_memory_pool01();//测试分配元素的性能
-void test_memory_pool02();//测试分配并释放元素的性能
+void test01();//测试分配元素的性能
+void test02();//测试分配并释放元素的性能
 
 int main() {
-    test_memory_pool01();
-    test_memory_pool02();
+    test01();
+    test02();
     return 0;
 }
 
-void test_memory_pool01() {
-    MemPool *pool = pool_init();
+void test01(ull esize, int counts) {
+    MemPool* pool = pool_init(esize);
     if (!pool) {
-        cerr << "内存池初始化失败" << endl;
+        cerr << "initialize failed" << endl;
         return;
     }
 
-    const size_t num_elements = 1000000; // 分配一百万个元素
-    void **elements = new void*[num_elements];
+    vector<void*> elements(counts);
 
     clock_t start = clock();
-    for (size_t i = 0; i < num_elements; ++i) {
-        elements[i] = pool_malloc(pool);
-        if (!elements[i]) {
-            cerr << "内存分配失败" << endl;
+    for (ull u = 0; u < counts; u++) {
+        elements[u] = pool_malloc(pool);
+        if (!elements[u]) {
+            cerr << "allocate failed" << endl;
             break;
         }
     }
-    clock_t end = clock();
-     cout << "内存池分配 " << num_elements << " 个元素耗时: " << static_cast<double>(end - start) / CLOCKS_PER_SEC << "秒" << endl;
-    
-    // 释放所有元素
-    for (size_t i = 0; i < num_elements; ++i) {
-        pool_free(pool, elements[i]);
+
+    for (ull w = 0; w < counts; w++) {
+        pool_free(pool, elements[w]);
     }
 
-    delete[] elements;
+    clock_t end = clock();
+    elements.clear();
     pool_destroy(pool);
 
     clock_t start2 = clock();
-    for (size_t i = 0; i < num_elements; ++i) {
-        elements[i] = (void*)malloc(ELEMENT_SIZE);
-        if (!elements[i]) {
-            cerr << "内存分配失败" << endl;
-            break;
-        }
-    }
+    for (ull u = 0; u < counts; u++) elements[u] = (void*)malloc(esize);
+    for (ull w = 0; w < counts; w++) elements[u] = free(elements[w]);
     clock_t end2 = clock();
-    cout << "标准库分配 " << num_elements << " 个元素耗时: ";
-    cout << static_cast<double>(end2 - start2) / CLOCKS_PER_SEC;
-    cout << " 秒" << endl;
+
+    cout << "Memory Pool costs: " << static_cast<double>(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+    cout << "System Calling costs: " << static_cast<double>(end2 - start2) / CLOCKS_PER_SEC << " seconds" << endl;
+    return;
 }
 
-void test_memory_pool02() {
-    MemPool *pool = pool_init();
+void test02(ull esize, int counts) {
+    MemPool* pool = pool_init(esize);
     if (!pool) {
-        cerr << "内存池初始化失败" << endl;
+        cerr << "initialize failed" << endl;
         return;
     }
-
-    const size_t num_elements = 1000000; // 分配一百万个元素
-    void **elements = new void*[num_elements];
+    vector<void*> elements(counts);
 
     clock_t start = clock();
-    for (size_t i = 0; i < num_elements; ++i) {
-        elements[i] = pool_malloc(pool);
-        if (!elements[i]) {
-            cerr << "内存分配失败" << endl;
-            break;
+    int turns1 = 0;
+    while (turns1 < counts) {
+        for (int u = 0; u < 20; u++) {
+            elements[u] = pool_malloc(pool);
+            if (!elements[u]) {
+                cerr << "allocate failed" << endl;
+                break;
+            }
         }
-    }
-    for (size_t i = 0; i < num_elements; ++i) {
-        pool_free(pool, elements[i]);
+        for (int w = 0; w < 20; w++) {
+            pool_free(pool, elements[w]);
+        }
+        turns1++;
     }
     clock_t end = clock();
-    cout << "内存池分配并释放 " << num_elements << " 个元素耗时: "<< static_cast<double>(end - start) / CLOCKS_PER_SEC<< " 秒" << endl;
-              
-
-    delete[] elements;
+    elements.clear();
     pool_destroy(pool);
 
     clock_t start2 = clock();
-    for (size_t i = 0; i < num_elements; ++i) {
-        elements[i] = (void*)malloc(ELEMENT_SIZE);
-        if (!elements[i]) {
-            cerr << "内存分配失败" << endl;
-            break;
-        }
-    }
-    for (size_t i = 0; i < num_elements; ++i) {
+
+    for (int i = 0; i < counts; i++) {
+        elements[i] = (void*)malloc(esize);
         free(elements[i]);
     }
     clock_t end2 = clock();
-    cout << "标准库分配并释放 " << num_elements << " 个元素耗时: " << static_cast<double>(end2 - start2) / CLOCKS_PER_SEC << " 秒" << endl;
-}
 
+    cout << "Memory Pool costs: " << static_cast<double>(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+    cout << "System Calling costs: " << static_cast<double>(end2 - start2) / CLOCKS_PER_SEC << " seconds" << endl;
+    return;
+}
