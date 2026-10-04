@@ -1,42 +1,32 @@
-#ifndef MEMORY_POOL_H
-#define MEMORY_POOL_H
-
-#include <cstddef>
 #include <mutex>
 
-#define BLOCK_SIZE      (4 * 1024 * 1024)  /* 每个内存块大小4MB */
-#define ELEMENT_SIZE    32                  /* 每个元素大小32字节 */
-#define INITIAL_BLOCKS  4                   /* 初始块上限为4块 */
+const int BLOCKSIZE = 4 * 1024 * 1024;
+const int ELEMSIZE = 32;
+const int INITBLOCKS = 4;
 
-typedef unsigned long size_t;
+typedef unsigned long long ull;
 
-/* 空闲链表节点：嵌入在空闲元素内部 */
-typedef struct FreeNode {
-    struct FreeNode *next;
+typedef struct FreeNode{
+    struct FreeNode* next;
 } FreeNode;
 
-/* 内存块 */
-typedef struct {
-    char *data;          /* 块起始地址 */
-    size_t used;         /* 已分配元素数 */
-    size_t capacity;     /* 块可容纳元素总数 */
+typedef struct Block{
+    char* data;
+    ull used;
+    ull capacity;
 } Block;
 
-/* 内存池 */
-typedef struct {
-    Block **blocks;      /* 块数组（动态扩容） */
-    size_t block_count;  /* 已使用块数 */
-    size_t block_cap;    /* 块数组容量上限 */
-    FreeNode *free_list; /* 空闲链表头 */
-    size_t elem_size;    /* 元素大小 */
-    size_t block_size;   /* 块大小 */
-    std::mutex mtx;      /* 互斥锁，保护上述所有字段的并发访问 */
+typedef struct MemPool{
+    Block** blocks;
+    ull usedblock;
+    ull blockcap;
+    FreeNode* freelist;
+    ull elemsize;
+    ull blocksize;
+    std::mutex mtx;
 } MemPool;
 
-/* 四大核心模块 */
-MemPool *pool_init(size_t elem_size = ELEMENT_SIZE, size_t block_size = BLOCK_SIZE);
-void    *pool_malloc(MemPool *pool);
-void     pool_free(MemPool *pool, void *elem);
-void     pool_destroy(MemPool *pool);
-
-#endif
+MemPool* pool_init(ull esize = ELEMSIZE, ull bsize = BLOCKSIZE);
+void* pool_malloc(MemPool* pool);
+void pool_free(MemPool* pool, void* elem);
+void pool_destroy(MemPool* pool);
