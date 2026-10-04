@@ -1,122 +1,111 @@
-#include "memory_pool.h"
-#include <stdlib.h>
-#include <string.h>
+#include "data structure.h"
+#include <cstdlib>
 
-/* ---------- 内部：分配一个新块 ---------- */
-static Block *block_create(size_t block_size, size_t elem_size)
-{
-    Block *blk = (Block *)malloc(sizeof(Block));
-    if (!blk) return NULL;
+static Block* BlockCreate(ull esize, ull bsize) {
+    Block* blk = (Block*)malloc(sizeof(Block));
+    if (!blk) return nullptr;
 
-    blk->data = (char *)malloc(block_size);
-    if (!blk->data) { free(blk); return NULL; }
+    blk->data = (char*)malloc(bsize);
+    if (!blk->data) {
+        free(blk);
+        return nullptr;
+    }
 
-    blk->capacity = block_size / elem_size;
+    blk->capacity = bsize / esize;
     blk->used = 0;
     return blk;
 }
 
-/* ---------- 模块一：初始化 ---------- */
-MemPool *pool_init(size_t elem_size, size_t block_size)
-{
-    MemPool *pool = (MemPool *)malloc(sizeof(MemPool));
-    if (!pool) return NULL;
+MemPool* pool_init(ull esize, ull bsize) {
+    MemPool* pool = (MemPool*)malloc(sizeof(MemPool));
+    if (!pool) return nullptr;
 
-    pool->elem_size   = elem_size;
-    pool->block_size  = block_size;
-    pool->free_list   = NULL;
-    pool->block_count = 0;
-    pool->block_cap   = INITIAL_BLOCKS;
+    pool->elemsize = esize;
+    pool->blocksize = bsize;
+    pool->freelist = nullptr;
+    pool->usedblock = 0;
+    pool->blockcap = INITBLOCKS;
 
-    pool->blocks = (Block **)malloc(sizeof(Block *) * pool->block_cap);
-    if (!pool->blocks) { free(pool); return NULL; }
+    pool->blocks = (Block**)malloc(sizeof(Block*) * pool->blockcap);
+    if (!pool->blocks) {
+        free(pool);
+        return nullptr;
+    }
 
-    /* 预分配首个内存块 */
-    Block *first = block_create(block_size, elem_size);
-    if (!first) { free(pool->blocks); free(pool); return NULL; }
+    Block* first = BlockCreate(esize, bsize);
+    if (!first) {
+        free(pool->blocks);
+        free(pool);
+        return nullptr;
+    }
 
-    pool->blocks[pool->block_count++] = first;
+    pool->blocks[pool->usedblock++] = first;
     return pool;
 }
 
-/* ---------- 模块二：内存分配（三级判断分支） ---------- */
-void *pool_malloc(MemPool *pool)
-{
-    if (!pool) return NULL;
+void* pool_malloc(MemPool* pool) {
+    if (!pool) return nullptr;
 
-    /*
-     * Step1: 空闲链表非空？
-     *   是 → 取链表头元素，O(1) 返回
-     */
+    pool->mtx.lock();
 
-    pool->mtx.lock();  /* 加锁保护共享资源 */
-
-    if (pool->free_list) {
-        FreeNode *node = pool->free_list;
-        pool->free_list = node->next;
-        return (void *)node;
+    if (pool->freelist) {
+        FreeNode* node = pool->freelist;
+        pool->freelist = node->next;
+        return (void*) node;
     }
 
-    /*
-     * Step2: 当前块有空闲元素？
-     *   是 → 返回当前块中下一个未用元素
-     */
-    Block *cur = pool->blocks[pool->block_count - 1];
+    Block* cur = pool->blocks[pool->usedblock - 1];
     if (cur->used < cur->capacity) {
-        void *elem = cur->data + cur->used * pool->elem_size;
+        void* elem = cur->data + cur->used * pool->elemsize;
         cur->used++;
         return elem;
     }
 
-    /*
-     * Step3: 需要新块
-     *   已使用块数 == 容量上限 → 扩容 2 倍
-     */
-    if (pool->block_count == pool->block_cap) {
-        size_t new_cap = pool->block_cap * 2;
-        Block **tmp = (Block **)realloc(pool->blocks, sizeof(Block *) * new_cap);
-        if (!tmp) return NULL;
-        pool->blocks   = tmp;
-        pool->block_cap = new_cap;
+    if (pool->usedblock == pool->blockcap) {
+        ull newcap = pool->blockcap * 2;
+        Block** temp = (Block**)realloc(pool->blocks, sizeof(Block*) * newcap);
+        if (!temp) return nullptr;
+        pool->blocks = temp;
+        pool->blockcap = newcap;
     }
 
-    Block *new_blk = block_create(pool->block_size, pool->elem_size);
-    if (!new_blk) return NULL;
+    Block* newblk = BlockCreate(pool->elemsize, pool->blocksize);
+    if (!newblk) return nullptr;
+    pool->blocks[pool->usedblock++] = newblk;
 
-    pool->blocks[pool->block_count++] = new_blk;
+    void* elem = newblk->data + newblk->used * pool->elemsize;
+    newblk->used++;
 
-    void *elem = new_blk->data + new_blk->used * pool->elem_size;
-    new_blk->used++;
-
-    pool->mtx.unlock();  /* 解锁 */
+    pool->mtx.unlock();
     return elem;
 }
 
-/* ---------- 模块三：释放元素（头插法归还空闲链表） ---------- */
-void pool_free(MemPool *pool, void *elem)
-{
+void pool_free(MemPool* pool, void* elem) {
     if (!pool || !elem) return;
 
-    pool->mtx.lock();  
+    pool->mtx.lock();
 
-    FreeNode *node = (FreeNode *)elem;
-    node->next     = pool->free_list;   /* 头插法 */
-    pool->free_list = node;
-    pool->mtx.unlock();  
+    FreeNode* node = (FreeNode*)elem;
+    node->next = pool->freelist;
+    pool->freelist = node;
+
+    pool->mtx.unlock();
+
+    return;
 }
 
-/* ---------- 模块四：释放整个内存池 ---------- */
-void pool_destroy(MemPool *pool)
-{
+void pool_destroy(MemPool* pool) {
     if (!pool) return;
 
-    pool->mtx.lock();  
+    pool->mtx.lock();
 
-    for (size_t i = 0; i < pool->block_count; i++) {
+    for (ull i = 0; i < pool->usedblock; i++) {
         free(pool->blocks[i]->data);
         free(pool->blocks[i]);
     }
     free(pool->blocks);
-    pool->mtx.unlock();  
+
+    pool->mtx.unlock();
     free(pool);
+    return;
 }
